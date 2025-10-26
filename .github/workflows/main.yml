@@ -1,0 +1,27 @@
+name: Deploy Laravel Project on push
+on:
+  push:
+    branches:
+      - main
+jobs:
+  web-deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the latest code
+        uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - name: Install Dependencies
+        run: composer update --ignore-platform-reqs
+      - name: Directory Permissions
+        run: chmod -R 777 storage bootstrap/cache
+      - name: 📂 Sync files
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.GIT_CPANEL_LARAVEL_MAIN_SERVER }}
+          username: ${{ secrets.GIT_CPANEL_LARAVEL_MAIN_USER }}
+          password: ${{ secrets.GIT_CPANEL_LARAVEL_MAIN_PWD }}
+          server-dir: ./
+          exclude: |
+            **/node_modules/**
+            **/vendor/**

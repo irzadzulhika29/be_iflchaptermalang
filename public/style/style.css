@@ -1,0 +1,46 @@
+.ck-editor__editable_inline
+{
+  height: 450px;
+}
+
+.container {
+  margin: 20px auto;
+  width: 80%;
+}
+
+table {
+  width: 1000%;
+  max-width: 10px;
+}
+
+table, th, td {
+  border: 1px solid #ddd;
+}
+
+th, td {
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background-color: #f2f2f2;
+}
+
+td img {
+  max-height: 200px;
+  max-width: 200px;
+}
+
+a {
+  text-decoration: none;
+  color: blue;
+}
+
+a:hover {
+  text-decoration: underline;
+  color: darkblue;
+}
+
+.btn {
+  margin-bottom: 10px;
+}

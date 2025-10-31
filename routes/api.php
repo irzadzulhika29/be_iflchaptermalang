@@ -17,6 +17,7 @@ use App\Http\Controllers\Donation\CategoryController;
 use App\Http\Controllers\Donation\CampaignController;
 use App\Http\Controllers\Donation\DonationController;
 use App\Http\Controllers\Donation\TransactionController;
+use App\Http\Controllers\Volunteer\VolunteerRegistrationController;
 // testestes push
 Route::prefix('v1')->group(function () {
   Route::group(['prefix' => 'auth'], function () {
@@ -41,6 +42,15 @@ Route::prefix('v1')->group(function () {
       Route::get('/', [ProfileController::class, 'showProfile']);
       Route::put('/edit', [ProfileController::class, 'updateProfile']);
       Route::post('/update-password', [ProfileController::class, 'updatePassword']);
+    });
+
+    // Volunteer Registration Routes
+    Route::group(['prefix' => 'volunteer'], function () {
+      Route::group(['prefix' => 'registration'], function () {
+        Route::get('/form-data', [VolunteerRegistrationController::class, 'getFormData']);
+        Route::post('/', [VolunteerRegistrationController::class, 'register']);
+        Route::get('/my-registration', [VolunteerRegistrationController::class, 'getMyRegistration']);
+      });
     });
 
     Route::group(['prefix' => 'supervisor', 'middleware' => 'role:admin,bismar,copywriter'], function () {

@@ -13,6 +13,7 @@ use App\Models\Blog;
 use App\Models\Comment;
 use App\Models\Blog_Like;
 use App\Models\Comment_Like;
+use App\Models\VolunteerRegistration;
 
 class User extends Authenticatable implements JWTSubject, MustVerifyEmail
 {
@@ -143,5 +144,10 @@ class User extends Authenticatable implements JWTSubject, MustVerifyEmail
   public function likedComments()
   {
     return $this->belongsToMany(Comment::class, 'comment_like', 'user_id', 'comment_id')->using(Comment_Like::class)->withTimestamps();
+  }
+
+  public function volunteerRegistrations()
+  {
+    return $this->hasMany(VolunteerRegistration::class);
   }
 }

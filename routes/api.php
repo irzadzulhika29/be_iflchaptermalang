@@ -17,6 +17,7 @@ use App\Http\Controllers\Donation\CategoryController;
 use App\Http\Controllers\Donation\CampaignController;
 use App\Http\Controllers\Donation\DonationController;
 use App\Http\Controllers\Donation\TransactionController;
+use App\Http\Controllers\Volunteer\VolunteerRegistrationController;
 // testestes push
 Route::prefix('v1')->group(function () {
   Route::group(['prefix' => 'auth'], function () {
@@ -31,16 +32,25 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['jwt.verify'])->group(function () {
       Route::post('/logout', [LoginController::class, 'logout']);
     });
-    
+
     Route::get('/notice/emailNotVerified', [NoticeController::class, 'emailNotVerifiedNotice'])->name('email_not_verified.notice');
     Route::get('/notice/unauthorized', [NoticeController::class, 'unauthorizedNotice'])->name('unauthorized.notice');
   });
-  
+
   Route::middleware(['jwt.verify', 'verified'])->group(function () {
     Route::group(['prefix' => 'profile'], function () {
       Route::get('/', [ProfileController::class, 'showProfile']);
       Route::put('/edit', [ProfileController::class, 'updateProfile']);
       Route::post('/update-password', [ProfileController::class, 'updatePassword']);
+    });
+
+    // Volunteer Registration Routes
+    Route::group(['prefix' => 'volunteer'], function () {
+      Route::group(['prefix' => 'registration'], function () {
+        Route::get('/form-data', [VolunteerRegistrationController::class, 'getFormData']);
+        Route::post('/', [VolunteerRegistrationController::class, 'register']);
+        Route::get('/my-registration', [VolunteerRegistrationController::class, 'getMyRegistration']);
+      });
     });
 
     Route::group(['prefix' => 'supervisor', 'middleware' => 'role:admin,bismar,copywriter'], function () {
@@ -62,20 +72,25 @@ Route::prefix('v1')->group(function () {
       Route::get('/{id}', [UserController::class, 'getUserById']);
       Route::put('/{id}', [UserController::class, 'updateUser']);
       Route::delete('/{id}', [UserController::class, 'deleteUser']);
+
+      // Donation management
+      Route::get('/donations/pending', [DonationController::class, 'getPending']);
+      Route::post('/donations/{id}/approve', [DonationController::class, 'approve']);
+      Route::post('/donations/{id}/reject', [DonationController::class, 'reject']);
     });
   });
-      
+
   Route::group(['prefix' => 'blog'], function () {
     // blog categories
     Route::group(['prefix' => 'category'], function () {
       Route::get('/', [BlogCategoriesController::class, 'index']);
     });
-    
+
     // blog
     Route::get('/', [BlogController::class, 'index']);
     Route::post('/upload', [BlogController::class, 'upload']);
     Route::get('/{blog_slug}', [BlogController::class, 'show']);
-    
+
     // blog comment
     Route::post('/{blog_id}/toggle-like', [BlogController::class, 'likeBlog']);
     Route::get('/{blog_id}/comment', [CommentController::class, 'viewComment']);
@@ -83,13 +98,13 @@ Route::prefix('v1')->group(function () {
     Route::post('/{blog_id}/comment/{comment_id}', [CommentController::class, 'replyComment']);
     Route::put('/{blog_id}/comment/{comment_id}', [CommentController::class, 'editComment']);
   });
-  
+
   Route::group(['prefix' => 'comment'], function () {
     Route::post('/{comment_id}/toggle-like', [CommentController::class, 'likeComment']);
     Route::get('/{comment_id}', [CommentController::class, 'viewCommentById']);
     Route::delete('/{comment_id}', [CommentController::class, 'deleteComment']);
   });
-  
+
   Route::group(['prefix' => 'campaign'], function () {
     // campaign categories
     Route::group(['prefix' => 'category'], function () {

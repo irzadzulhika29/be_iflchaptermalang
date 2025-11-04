@@ -29,7 +29,7 @@ class EmailVerificationController extends Controller
       $redirect_message = "Back to Login";
 
       if (!$request->hasValidSignature()) {
-        return view("auth.notification",[
+        return view("auth.notification", [
           "titleHead" => "Email Verified Error",
           "title" => "Email verification failed",
           "message" => "Your email has not a valid signature",
@@ -42,7 +42,7 @@ class EmailVerificationController extends Controller
       if (!$user->hasVerifiedEmail()) {
         $user->markEmailAsVerified();
       } else {
-        return view("auth.notification",[
+        return view("auth.notification", [
           "titleHead" => "Email Verified",
           "title" => "Your email was verified a moment ago",
           "message" => "You can login now!",
@@ -52,7 +52,7 @@ class EmailVerificationController extends Controller
         ]);
       }
 
-      return view("auth.notification",[
+      return view("auth.notification", [
         "titleHead" => "Email Verified",
         "title" => "Email has been verified",
         "message" => "Your email has been successfully verified. You can now login and access all features!",
@@ -60,9 +60,8 @@ class EmailVerificationController extends Controller
         "directLink" => $redirect_link,
         "titleLogin" => $redirect_message,
       ]);
-
     } catch (AuthorizationException $e) {
-      return view("auth.notification",[
+      return view("auth.notification", [
         "titleHead" => "Email Verified Error",
         "title" => "Authorization error",
         "message" => $e->getMessage(),
@@ -70,9 +69,8 @@ class EmailVerificationController extends Controller
         "directLink" => $redirect_link,
         "titleLogin" => $redirect_message,
       ]);
-
     } catch (\Exception $e) {
-      return view("auth.notification",[
+      return view("auth.notification", [
         "titleHead" => "Email Verified Error",
         "title" => "Error verifying email",
         "message" => $e->getMessage(),

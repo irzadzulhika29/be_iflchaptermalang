@@ -15,20 +15,45 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'api'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', '*'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => [
+        'http://localhost',
+        'http://localhost:5173',
+        'http://localhost:8000',
+        'http://127.0.0.1',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:8000',
+        'https://localhost',
+        'https://localhost:8000',
+        'https://*.ngrok.app',
+        'https://*.ngrok-free.app',
+        'https://*.ngrok.io'
+    ],
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        'https://.*\\.ngrok\\.io',
+        'https://.*\\.ngrok-free\\.app',
+        'https://.*\\.ngrok\\.app',
+        'http://localhost:[0-9]+',
+        'http://127.0.0.1:[0-9]+'
+    ],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => ['*', 'ngrok-skip-browser-warning'],
 
-    'exposed_headers' => [],
+    'exposed_headers' => [
+        'Cache-Control',
+        'Content-Language',
+        'Content-Type',
+        'Expires',
+        'Last-Modified',
+        'Pragma'
+    ],
 
-    'max_age' => 0,
+    'max_age' => 60 * 60 * 24,  // 24 hours
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];

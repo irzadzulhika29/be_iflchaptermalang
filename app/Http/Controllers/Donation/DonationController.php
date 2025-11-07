@@ -46,6 +46,15 @@ class DonationController extends Controller
   {
     $user = auth()->user();
 
+    $idempotencyKey = $request->header('Idempotency-Key') ?? $request->input('idempotency_key');
+
+    if (!$idempotencyKey) {
+      return response()->json([
+        'status' => 'error',
+        'message' => 'Idempotency-Key is required',
+      ], 400);
+    }
+
     $campaign = Campaign::where('slug', $slug)->orWhere('id', $slug)->first();
 
     if (!$campaign) {
@@ -53,6 +62,26 @@ class DonationController extends Controller
         'status' => 'error',
         'message' => 'Campaign not found with the given slug',
       ], 404);
+    }
+
+    $existingDonation = Donation::where('idempotency_key', $idempotencyKey)
+      ->where('campaign_id', $campaign->id)
+      ->where('created_at', '>=', now()->subDay())
+      ->first();
+
+    if ($existingDonation) {
+      // Return response yang sama seperti donation berhasil
+      return response()->json([
+        'status' => 'success',
+        'message' => 'Donasi berhasil dibuat. Menunggu verifikasi admin.',
+        'data' => [
+          'donation_id' => $existingDonation->id,
+          'invoice' => $existingDonation->invoice,
+          'status' => $existingDonation->status,
+          'donation_amount' => $existingDonation->donation_amount,
+          'payment_proof' => $existingDonation->payment_proof,
+        ]
+      ], 201);
     }
 
     // Generate invoice number

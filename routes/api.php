@@ -75,6 +75,7 @@ Route::prefix('v1')->group(function () {
 
       // Donation management
       Route::get('/donations/pending', [DonationController::class, 'getPending']);
+      Route::get('/donations/campaign/{campaignId}/total', [DonationController::class, 'getTotalDonationByCampaign']);
       Route::post('/donations/{id}/approve', [DonationController::class, 'approve']);
       Route::post('/donations/{id}/reject', [DonationController::class, 'reject']);
     });
@@ -119,8 +120,16 @@ Route::prefix('v1')->group(function () {
     Route::get('/invoice/{campaign_id}', [TransactionController::class, 'invoice']);
   });
 
+  Route::prefix('transaction')->group(function () {
+    Route::post('/create/{campaignSlug}', [TransactionController::class, 'createTransaction']);
+    Route::post('/callback', [TransactionController::class, 'paymentCallback']);
+    Route::get('/invoice/{id}', [TransactionController::class, 'invoice']);
+    Route::get('/status/{id}', [TransactionController::class, 'checkStatus']);
+  });
+
+
   // Test Tripay payment
   // Route::get('/donation', [TransactionController::class, 'index']);
-  Route::post('/callback', [TransactionController::class, 'callback']);
+  // Route::post('/callback', [TransactionController::class, 'callback']);
   // Route::post('/donate', [TransactionController::class, 'proccess'])->name('proccess');
 });

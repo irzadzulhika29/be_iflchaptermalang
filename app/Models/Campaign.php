@@ -8,38 +8,45 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class Campaign extends Model
 {
-    use HasFactory, HasUuids;
+  use HasFactory, HasUuids;
 
-    protected $fillable = [
-      'title',
-      'slug',
-      'short_description',
-      'body',
-      'view_count',
-      'status',
-      'current_donation',
-      'target_donation',
-      'publish_date',
-      'end_date',
-      'note',
-      'receiver',
-      'image',
-      
-      'user_id',
-    ];
+  protected $fillable = [
+    'title',
+    'slug',
+    'short_description',
+    'body',
+    'view_count',
+    'status',
+    'current_donation',
+    'target_donation',
+    'publish_date',
+    'end_date',
+    'note',
+    'receiver',
+    'image',
 
-    public function user()
-    {
+    'user_id',
+  ];
+
+  protected $appends = ['total_collected'];
+
+  public function getTotalCollectedAttribute()
+  {
+    return $this->donations()->where('status', 'paid')->sum('donation_amount');
+  }
+
+  public function user()
+  {
     return $this->belongsTo(User::class);
-    }
+  }
 
-    public function categories()
-    {
-      return $this->belongsToMany(Category::class)->using(Campaign_Category::class)->withTimestamps();
-    }
+  public function categories()
+  {
+    return $this->belongsToMany(Category::class)->using(Campaign_Category::class)->withTimestamps();
+  }
 
-    public function donations()
-    {
-      return $this->hasMany(Donation::class);
-    }
+  public function donations()
+  {
+    return $this->hasMany(Donation::class);
+  }
 }

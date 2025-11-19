@@ -13,9 +13,8 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::table('donations', function (Blueprint $table) {
-            $table->string('payment_proof')->nullable()->after('invoice');
-            // $table->string('phone')->nullable()->after('email');
+        Schema::table('events', function (Blueprint $table) {
+            $table->date('end_date')->nullable()->after('start_date');
         });
     }
 
@@ -26,9 +25,8 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::table('donations', function (Blueprint $table) {
-            $table->dropColumn('payment_proof');
-            // $table->dropColumn('phone');
+        Schema::table('events', function (Blueprint $table) {
+            $table->dropColumn('end_date');
         });
     }
 };

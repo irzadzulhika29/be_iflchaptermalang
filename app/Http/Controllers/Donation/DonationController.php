@@ -46,6 +46,7 @@ class DonationController extends Controller
   {
     $user = auth()->user();
 
+
     $campaign = Campaign::where('slug', $slug)->orWhere('id', $slug)->first();
 
     if (!$campaign) {
@@ -54,7 +55,6 @@ class DonationController extends Controller
         'message' => 'Campaign not found with the given slug',
       ], 404);
     }
-
     // Generate invoice number
     $campaignId = $campaign->id;
     $campaignPrefix = strtoupper(substr($campaignId, 0, 3));
@@ -64,7 +64,7 @@ class DonationController extends Controller
     $data = $request->only('name', 'email', 'anonymous', 'phone', 'donation_amount', 'donation_message', 'payment_proof');
     $data['anonymous'] = $request->input('anonymous') ?? 0;
     $data['campaign_id'] = $campaign->id;
-    $data['status'] = 'pending'; // Status pending menunggu verifikasi admin
+    $data['status'] = 'paid'; // Status pending menunggu verifikasi admin
     $data['user_id'] = $user ? $user->id : null;
     $data['invoice'] = $invoice;
 
@@ -317,6 +317,70 @@ class DonationController extends Controller
       ], 200);
     } catch (\Exception $e) {
       DB::rollBack();
+      return response()->json([
+        'status' => 'error',
+        'message' => $e->getMessage(),
+      ], 500);
+    }
+  }
+
+  public function getTotalDonationByCampaign(string $campaign_id)
+  {
+    $campaign = Campaign::where('id', $campaign_id)
+      ->orWhere('slug', $campaign_id)
+      ->first();
+
+    if (!$campaign) {
+      return response()->json([
+        'status' => 'error',
+        'message' => 'Campaign not found with the given id',
+      ], 404);
+    }
+
+    try {
+      $donations = Donation::where('campaign_id', $campaign->id)
+        ->where('status', 'paid')
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+      $totalDonation = $donations->sum('donation_amount');
+
+      $donorCount = $donations->count();
+
+      $donors = $donations->map(function ($donation) {
+        return [
+          'donation_id' => $donation->id,
+          'name' => $donation->name,
+          'anonymous' => $donation->anonymous,
+          'donation_amount' => $donation->donation_amount,
+          'donation_message' => $donation->donation_message,
+          'donated_at' => $donation->created_at,
+          'email' => $donation->anonymous ? null : $donation->email,
+          'phone' => $donation->anonymous ? null : $donation->phone,
+        ];
+      });
+
+      return response()->json([
+        'status' => 'success',
+        'message' => 'Get total donation by campaign success',
+        'data' => [
+          'campaign' => [
+            'id' => $campaign->id,
+            'name' => $campaign->name,
+            'slug' => $campaign->slug,
+            'target_donation' => $campaign->target_donation ?? null,
+          ],
+          'summary' => [
+            'total_donation' => $totalDonation,
+            'donor_count' => $donorCount,
+            'percentage' => $campaign->target_donation
+              ? round(($totalDonation / $campaign->target_donation) * 100, 2)
+              : null,
+          ],
+          'donors' => $donors,
+        ],
+      ], 200);
+    } catch (\Exception $e) {
       return response()->json([
         'status' => 'error',
         'message' => $e->getMessage(),

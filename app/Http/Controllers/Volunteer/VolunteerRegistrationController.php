@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Volunteer;
 
 use App\Http\Controllers\Controller;
+use App\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\VolunteerRegistration;
 use App\Models\User;
+use App\Models\ReferralCode;
 
 class VolunteerRegistrationController extends Controller
 {
@@ -52,6 +54,39 @@ class VolunteerRegistrationController extends Controller
         }
     }
 
+    public function getAvailableEvents()
+    {
+        try {
+            $events = Event::where('status', 'open')
+                ->where('category', 'program')
+                ->select('id', 'title', 'start_date', 'end_date', 'description', 'event_photo')
+                ->orderBy('start_date', 'desc')
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Available events retrieved successfully',
+                'data' => $events->map(function ($event) {
+                    return [
+                        'id' => $event->id,
+                        'title' => $event->title,
+                        'start_date' => $event->start_date?->format('Y-m-d'),
+                        'end_date' => $event->end_date?->format('Y-m-d'),
+                        'description' => $event->description,
+                        'event_photo' => $event->event_photo,
+                    ];
+                }),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve events: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+
     /**
      * Submit volunteer registration
      * Endpoint: POST /api/v1/volunteer/registration
@@ -60,6 +95,38 @@ class VolunteerRegistrationController extends Controller
     {
         try {
             $user = auth()->user();
+
+            $rules = [
+                'event_id' => ['required', 'uuid', 'exists:events,id'], // TAMBAH INI
+                'name' => ['required', 'string', 'max:255'],
+                'phone_number' => ['required', 'string', 'max:20'],
+                'username_instagram' => ['required', 'string', 'max:100'],
+                'info_source' => ['required', 'string', 'max:255'],
+                'motivation' => ['required', 'string', 'max:255'],
+                'experience' => ['required', 'string', 'max:255'],
+                'has_read_guidebook' => ['required', 'boolean'],
+                'is_committed' => ['required', 'boolean'],
+                'google_drive_link' => ['required', 'url', 'max:500'],
+                'referral_code' => ['nullable', 'string', 'max:50'],
+            ];
+
+            $validator = Validator::make($request->all(), $rules);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed',
+                    'errors' => $validator->messages(),
+                ], 422);
+            }
+
+            $event = Event::find($request->event_id);
+            if (!$event || $event->status !== 'open') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Event not found or not open for registration',
+                ], 404);
+            }
 
             // Cek apakah user sudah pernah mendaftar untuk event ini
             $existingRegistration = VolunteerRegistration::where('user_id', $user->id)
@@ -79,50 +146,74 @@ class VolunteerRegistrationController extends Controller
                 ], 409);
             }
 
-            // Validasi data yang dikirim sesuai form chat
-            $rules = [
-                // Data dari profile (pre-filled, bisa diubah user)
-                'email' => ['required', 'email', 'max:255'],
-                'name' => ['required', 'string', 'max:255'], // Nama Lengkap
-                'phone_number' => ['required', 'string', 'max:20'], // No HP (WhatsApp) - required untuk chat form
-                
-                // Data input baru user (wajib diisi)
-                'university' => ['required', 'string', 'max:255'], // Asal Universitas
-                'line_id' => ['required', 'string', 'max:100'], // ID Line
-                'choice_1' => ['required', 'string', 'max:255'], // Pilihan 1
-                'choice_2' => ['required', 'string', 'max:255'], // Pilihan 2
-                'google_drive_link' => ['required', 'url', 'max:500'], // Link Folder Google Drive - harus URL valid
-            ];
-
-            $validator = Validator::make($request->all(), $rules);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Validation failed',
-                    'errors' => $validator->messages(),
-                ], 422);
-            }
-
             // Mulai database transaction
             DB::beginTransaction();
 
             try {
+                $originalPrice = 75000;
+                $discountAmount = 0;
+                $referralCodeUsed = null;
+                $referralCodeObject = null;
+
+                if ($request->filled('referral_code')) {
+                    $inputCode = strtoupper(trim($request->input('referral_code')));
+
+                    $referralCodeObject = ReferralCode::where('code', $inputCode)
+                        ->where('event_id', $event->id)
+                        ->first();
+
+                    if (!$referralCodeObject) {
+                        DB::rollBack();
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Kode referral tidak valid atau sudah tidak berlaku',
+                            'data' => [
+                                'invalid_reason' => $referralCodeObject->getInvalidReason(),
+                            ]
+                        ], 400);
+                    }
+
+                    if (!$referralCodeObject->isValid()) {
+                        DB::rollBack();
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Kode referral tidak valid atau sudah tidak berlaku',
+                            'data' => [
+                                'invalid_reason' => $referralCodeObject->getInvalidReason(),
+                            ]
+                        ], 400);
+                    }
+
+                    $discountAmount = $referralCodeObject->calculateDiscountAmount($originalPrice);
+                    $referralCodeUsed = $referralCodeObject->code;
+                }
+
+                $finalPrice = $originalPrice - $discountAmount;
                 // Buat volunteer registration dengan data sesuai form chat
                 $registration = VolunteerRegistration::create([
                     'user_id' => $user->id,
-                    'email' => $request->input('email', $user->email),
+                    'event_id' => $event->id,
                     'name' => $request->input('name', $user->name),
                     'phone_number' => $request->input('phone_number', $user->phone_number),
-                    'university' => $request->input('university'),
-                    'line_id' => $request->input('line_id'),
-                    'choice_1' => $request->input('choice_1'),
-                    'choice_2' => $request->input('choice_2'),
+                    'username_instagram' => $request->input('username_instagram'),
+                    'info_source' => $request->input('info_source'),
+                    'motivation' => $request->input('motivation'),
+                    'experience' => $request->input('experience'),
+                    'has_read_guidebook' => $request->input('has_read_guidebook'),
+                    'is_committed' => $request->input('is_committed'),
                     'google_drive_link' => $request->input('google_drive_link'),
                     'status' => VolunteerRegistration::STATUS_PENDING,
-                    'event_name' => 'Close the Gap IFL Chapter Malang 2025',
-                    'event_year' => 2025,
+                    'event_name' => $event->title,
+                    'event_year' => $event->start_date ? $event->start_date->format('Y') : date('Y'),
+                    'referral_code_used' => $referralCodeUsed,
+                    'discount_amount' => $discountAmount,
+                    'original_price' => $originalPrice,
+                    'final_price' => $finalPrice,
                 ]);
+
+                if ($referralCodeUsed && $referralCodeObject) {
+                    $referralCodeObject->incrementUsedCount();
+                }
 
                 // Update user profile jika ada perubahan data (email, name, phone_number)
                 $userUpdated = false;
@@ -146,30 +237,41 @@ class VolunteerRegistrationController extends Controller
 
                 DB::commit();
 
+                $registration->load('event:id,title,start_date');
+
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Volunteer registration submitted successfully',
                     'data' => [
                         'registration_id' => $registration->id,
-                        'email' => $registration->email,
+                        'event' => [
+                            'id' => $registration->event->id,
+                            'title' => $registration->event->title,
+                            'start_date' => $registration->event->start_date->format('Y-m-d'),
+                        ],
                         'name' => $registration->name,
                         'phone_number' => $registration->phone_number,
-                        'university' => $registration->university,
-                        'line_id' => $registration->line_id,
-                        'choice_1' => $registration->choice_1,
-                        'choice_2' => $registration->choice_2,
+                        'username_instagram' => $registration->username_instagram,
+                        'info_source' => $registration->info_source,
+                        'motivation' => $registration->motivation,
+                        'experience' => $registration->experience,
+                        'has_read_guidebook' => $registration->has_read_guidebook,
+                        'is_committed' => $registration->is_committed,
                         'status' => $registration->status,
-                        'event_name' => $registration->event_name,
-                        'event_year' => $registration->event_year,
+                        'pricing' => [
+                            'original_price' => $registration->original_price,
+                            'discount_amount' => $registration->discount_amount,
+                            'final_price' => $registration->final_price,
+                            'referral_code_used' => $registration->referral_code_used,
+                            'has_discount' => $registration->discount_amount > 0,
+                        ],
                         'submitted_at' => $registration->created_at->format('Y-m-d H:i:s'),
                     ],
                 ], 201);
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -182,16 +284,19 @@ class VolunteerRegistrationController extends Controller
      * Get registration status by user
      * Endpoint: GET /api/v1/volunteer/registration/my-registration
      */
-    public function getMyRegistration()
+    public function getMyRegistration(Request $request)
     {
         try {
             $user = auth()->user();
 
-            $registration = VolunteerRegistration::where('user_id', $user->id)
-                ->where('event_name', 'Close the Gap IFL Chapter Malang 2025')
-                ->where('event_year', 2025)
-                ->orderBy('created_at', 'desc')
-                ->first();
+            $query = VolunteerRegistration::where('user_id', $user->id)
+                ->with('event:id,title,start_date,end_date,event_photo');
+
+            if ($request->has('event_id')) {
+                $query->where('event_id', $request->event_id);
+            }
+
+            $registration = $query->orderBy('created_at', 'desc')->first();
 
             if (!$registration) {
                 return response()->json([
@@ -204,9 +309,28 @@ class VolunteerRegistrationController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Registration retrieved successfully',
-                'data' => $registration,
+                'data' => [
+                    'registration_id' => $registration->id,
+                    'event' => $registration->event,
+                    'name' => $registration->name,
+                    'phone_number' => $registration->phone_number,
+                    'username_instagram' => $registration->username_instagram,
+                    'info_source' => $registration->info_source,
+                    'motivation' => $registration->motivation,
+                    'experience' => $registration->experience,
+                    'has_read_guidebook' => $registration->has_read_guidebook,
+                    'is_committed' => $registration->is_committed,
+                    'status' => $registration->status,
+                    'pricing' => [
+                        'original_price' => $registration->original_price,
+                        'discount_amount' => $registration->discount_amount,
+                        'final_price' => $registration->final_price,
+                        'referral_code_used' => $registration->referral_code_used,
+                        'has_discount' => $registration->discount_amount > 0,
+                    ],
+                    'submitted_at' => $registration->created_at->format('Y-m-d H:i:s'),
+                ],
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -215,4 +339,3 @@ class VolunteerRegistrationController extends Controller
         }
     }
 }
-

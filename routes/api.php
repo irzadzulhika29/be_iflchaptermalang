@@ -18,6 +18,12 @@ use App\Http\Controllers\Donation\CampaignController;
 use App\Http\Controllers\Donation\DonationController;
 use App\Http\Controllers\Donation\TransactionController;
 use App\Http\Controllers\Volunteer\VolunteerRegistrationController;
+use App\Http\Controllers\Event\EventController;
+use App\Http\Controllers\Volunteer\ReferralCodeController;
+use App\Http\Controllers\Admin\ReferralCodeController as AdminReferralCodeController;
+use App\Http\Controllers\Admin\VolunteerRegistrationController as AdminVolunteerRegistrationController;
+use App\Http\Controllers\Event\SdgController;
+
 // testestes push
 Route::prefix('v1')->group(function () {
   Route::group(['prefix' => 'auth'], function () {
@@ -44,14 +50,30 @@ Route::prefix('v1')->group(function () {
       Route::post('/update-password', [ProfileController::class, 'updatePassword']);
     });
 
+    Route::get('/volunteer/referral-code/validate/{code}', [ReferralCodeController::class, 'validateReferralCode']);
+
     // Volunteer Registration Routes
-    Route::group(['prefix' => 'volunteer'], function () {
-      Route::group(['prefix' => 'registration'], function () {
-        Route::get('/form-data', [VolunteerRegistrationController::class, 'getFormData']);
-        Route::post('/', [VolunteerRegistrationController::class, 'register']);
-        Route::get('/my-registration', [VolunteerRegistrationController::class, 'getMyRegistration']);
+    Route::middleware(['jwt.verify', 'verified'])->group(function () {
+      Route::group(['prefix' => 'volunteer'], function () {
+        Route::group(['prefix' => 'registration'], function () {
+          Route::get('/form-data', [VolunteerRegistrationController::class, 'getFormData']);
+          Route::post('/', [VolunteerRegistrationController::class, 'register']);
+          Route::get('/my-registration', [VolunteerRegistrationController::class, 'getMyRegistration']);
+        });
       });
     });
+
+
+    Route::group(['prefix' => 'admin', 'middleware' => 'role:admin'], function () {
+      Route::get('/referral-codes', [AdminReferralCodeController::class, 'index']);
+      Route::get('/referral-codes/{id}', [AdminReferralCodeController::class, 'show']);
+      Route::post('/referral-codes', [AdminReferralCodeController::class, 'store']);
+      Route::put('/referral-codes/{id}', [AdminReferralCodeController::class, 'update']);
+      Route::patch('/referral-codes/{id}', [AdminReferralCodeController::class, 'update']);
+      Route::delete('/referral-codes/{id}', [AdminReferralCodeController::class, 'destroy']);
+      Route::patch('/referral-codes/{id}/toggle-active', [AdminReferralCodeController::class, 'toggleActive']);
+    });
+
 
     Route::group(['prefix' => 'supervisor', 'middleware' => 'role:admin,bismar,copywriter'], function () {
       Route::get('/', [UserController::class, 'getAllUsers']);
@@ -67,7 +89,15 @@ Route::prefix('v1')->group(function () {
       Route::apiResource('/blog/category', BlogCategoriesController::class)->except(['index']);
     });
 
+
     Route::group(['prefix' => 'admin', 'middleware' => 'role:admin'], function () {
+      Route::get('/volunteer-registrations', [AdminVolunteerRegistrationController::class, 'index']);
+      Route::get('/volunteer-registrations/export', [AdminVolunteerRegistrationController::class, 'export']);
+      Route::get('/volunteer-registrations/{id}', [AdminVolunteerRegistrationController::class, 'show']);
+      Route::patch('/volunteer-registrations/{id}/status', [AdminVolunteerRegistrationController::class, 'updateStatus']);
+      Route::post('/volunteer-registrations/bulk-update-status', [AdminVolunteerRegistrationController::class, 'bulkUpdateStatus']);
+      Route::get('/events/{eventId}/volunteer-registrations', [AdminVolunteerRegistrationController::class, 'getByEvent']);
+
       Route::apiResource('role', RoleController::class);
       Route::get('/{id}', [UserController::class, 'getUserById']);
       Route::put('/{id}', [UserController::class, 'updateUser']);
@@ -75,6 +105,7 @@ Route::prefix('v1')->group(function () {
 
       // Donation management
       Route::get('/donations/pending', [DonationController::class, 'getPending']);
+      Route::get('/donations/campaign/{campaignId}/total', [DonationController::class, 'getTotalDonationByCampaign']);
       Route::post('/donations/{id}/approve', [DonationController::class, 'approve']);
       Route::post('/donations/{id}/reject', [DonationController::class, 'reject']);
     });
@@ -119,8 +150,34 @@ Route::prefix('v1')->group(function () {
     Route::get('/invoice/{campaign_id}', [TransactionController::class, 'invoice']);
   });
 
+  Route::prefix('event')->group(function () {
+    Route::get('/', [EventController::class, 'index']);
+    Route::get('/{id}', [EventController::class, 'show']);
+
+    Route::middleware('jwt.verify', 'role:admin')->group(function () {
+      Route::post('/', [EventController::class, 'store']);
+      Route::post('/{id}', [EventController::class, 'update']); // POST untuk support file upload
+      Route::delete('/{id}', [EventController::class, 'destroy']);
+    });
+  });
+
+  Route::prefix('transaction')->group(function () {
+    Route::post('/create/{campaignSlug}', [TransactionController::class, 'createTransaction']);
+    Route::post('/callback', [TransactionController::class, 'paymentCallback']);
+    Route::get('/invoice/{id}', [TransactionController::class, 'invoice']);
+    Route::get('/status/{id}', [TransactionController::class, 'checkStatus']);
+  });
+
+
+
+  Route::prefix('sdg')->group(function () {
+    Route::get('/', [SdgController::class, 'index']);
+    Route::get('/{id}', [SdgController::class, 'show']);
+  });
+
+
   // Test Tripay payment
   // Route::get('/donation', [TransactionController::class, 'index']);
-  Route::post('/callback', [TransactionController::class, 'callback']);
+  // Route::post('/callback', [TransactionController::class, 'callback']);
   // Route::post('/donate', [TransactionController::class, 'proccess'])->name('proccess');
 });

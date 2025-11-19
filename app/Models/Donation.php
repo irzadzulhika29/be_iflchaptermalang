@@ -14,7 +14,6 @@ class Donation extends Model
     'name',
     'email',
     'phone',
-    'idempotency_key',
     'anonymous',
     'donation_amount',
     'donation_message',

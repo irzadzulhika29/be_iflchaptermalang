@@ -22,17 +22,24 @@ class VolunteerRegistration extends Model
      */
     protected $fillable = [
         'user_id',
-        'email',
+        'event_id',
         'name',
         'phone_number',
-        'university',
-        'line_id',
-        'choice_1',
-        'choice_2',
+        'username_instagram',
+        'info_source',
+        'motivation',
+        'experience',
+        'has_read_guidebook',
+        'is_committed',
         'google_drive_link',
         'status',
         'event_name',
         'event_year',
+
+        'referral_code_used',
+        'discount_amount',
+        'original_price',
+        'final_price',
     ];
 
     /**
@@ -43,7 +50,15 @@ class VolunteerRegistration extends Model
     protected $casts = [
         'birth_date' => 'date',
         'event_year' => 'integer',
+        'discount_amount' => 'decimal:2',
+        'original_price' => 'decimal:2',
+        'final_price' => 'decimal:2',
     ];
+
+    public function event()
+    {
+        return $this->belongsTo(Event::class);
+    }
 
     /**
      * Get the user that owns the volunteer registration.
@@ -68,5 +83,9 @@ class VolunteerRegistration extends Model
     {
         return $this->status === self::STATUS_APPROVED;
     }
-}
 
+    public function hasUsedReferralCode(): bool
+    {
+        return !empty($this->referral_code_used);
+    }
+}

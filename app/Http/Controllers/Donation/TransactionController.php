@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Midtrans\Config;
 use Midtrans\Notification;
 use Midtrans\Snap;
+use Illuminate\Support\Facades\Log;
 
 class TransactionController extends Controller
 {
@@ -129,16 +130,31 @@ class TransactionController extends Controller
     public function paymentCallback(Request $request)
     {
         try {
-            $notification = new Notification();
+            $json = json_decode($request->getContent());
 
-            $transactionStatus = $notification->transaction_status;
-            $fraudStatus = $notification->fraud_status;
-            $orderId = $notification->order_id;
+            Log::info('Midtrans Callback Received:', (array) $json);
+
+            if (!$json || !isset($json->order_id)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid callback data',
+                ], 400);
+            }
+
+            $orderId = $json->order_id;
+            $statusCode = $json->status_code;
+            $grossAmount = $json->gross_amount;
+            $signatureKey = $json->signature_key;
 
             $serverKey = config('midtrans.server_key');
-            $hashed = hash('sha512', $orderId . $notification->status_code . $fraudStatus . $serverKey);
+            $hashed = hash('sha512', $orderId . $statusCode . $grossAmount . $serverKey);
 
-            if ($hashed !== $notification->signature_key) {
+            if ($hashed !== $signatureKey) {
+                Log::error('Invalid Signature', [
+                    'expected' => $hashed,
+                    'received' => $signatureKey
+                ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Invalid signature key',
@@ -157,53 +173,113 @@ class TransactionController extends Controller
             $donation = $transaction->donation;
             $campaign = $donation->campaign;
 
-            $paymentType = $notification->payment_type;
-            $transactionTime = $notification->transaction_time;
-            $midtransTransactionId = $notification->transaction_id;
+            $transactionStatus = $json->transaction_status ?? 'unknown';
+            $fraudStatus = $json->fraud_status ?? null;
+            $paymentType = $json->payment_type ?? null;
+            $transactionTime = $json->transaction_time ?? now();
+            $midtransTransactionId = $json->transaction_id ?? null;
 
             $vaNumber = null;
             $paymentProvider = null;
 
-            if (isset($notification->va_numbers) && !empty($notification->va_numbers)) {
-                $vaNumber = $notification->va_numbers[0]->va_number;
-                $paymentProvider = $notification->va_numbers[0]->bank;
-            } elseif (isset($notification->biller_code) && isset($notification->bill_key)) {
-                $vaNumber = $notification->biller_code . '-' . $notification->bill_key;
+            if (isset($json->va_numbers) && is_array($json->va_numbers) && count($json->va_numbers) > 0) {
+                $vaNumber = $json->va_numbers[0]->va_number ?? null;
+                $paymentProvider = $json->va_numbers[0]->bank ?? null;
+            } elseif (isset($json->biller_code) && isset($json->bill_key)) {
+                $vaNumber = $json->biller_code . '-' . $json->bill_key;
                 $paymentProvider = 'mandiri';
-            } elseif (isset($notification->issuer)) {
-                $paymentProvider = $notification->issuer;
+            } elseif (isset($json->permata_va_number)) {
+                $vaNumber = $json->permata_va_number;
+                $paymentProvider = 'permata';
+            } elseif (isset($json->payment_code)) {
+                $vaNumber = $json->payment_code;
+                $paymentProvider = $json->store ?? 'convenience_store';
+            } elseif ($paymentType === 'credit_card') {
+                $paymentProvider = $json->bank ?? 'credit_card';
+            } elseif ($paymentType === 'gopay' || $paymentType === 'shopeepay') {
+                $paymentProvider = $paymentType;
+            } elseif (isset($json->issuer)) {
+                $paymentProvider = $json->issuer;
             }
 
-
-            if ($paymentType == 'echannel') {
+            if ($paymentType === 'echannel') {
                 $paymentType = 'bank_transfer';
                 $paymentProvider = 'mandiri';
             }
 
             DB::beginTransaction();
 
-            if ($transactionStatus == 'capture') {
-                if ($fraudStatus == 'accept') {
-                    $this->updateSuccessTransaction($transaction, $donation, $campaign, $midtransTransactionId, $paymentType, $paymentProvider, $vaNumber, $transactionTime);
-                }
-            } elseif ($transactionStatus == 'settlement') {
-                $this->updateSuccessTransaction($transaction, $donation, $campaign, $midtransTransactionId, $paymentType, $paymentProvider, $vaNumber, $transactionTime);
-            } elseif ($transactionStatus == 'pending') {
-                $this->updatePendingTransaction($transaction, $donation, $midtransTransactionId, $paymentType, $paymentProvider, $vaNumber);
-            } elseif ($transactionStatus == 'deny' || $transactionStatus == 'cancel') {
-                $donation->update(['status' => 'denied']);
-                $transaction->update([
-                    'midtrans_transaction_id' => $midtransTransactionId,
-                    'payment_method' => $paymentType,
-                    'payment_provider' => $paymentProvider,
-                ]);
-            } elseif ($transactionStatus == 'expire') {
-                $donation->update(['status' => 'expired']);
-                $transaction->update([
-                    'midtrans_transaction_id' => $midtransTransactionId,
-                    'payment_method' => $paymentType,
-                    'payment_provider' => $paymentProvider,
-                ]);
+            switch ($transactionStatus) {
+                case 'capture':
+                    if ($paymentType === 'credit_card') {
+                        if ($fraudStatus === 'accept') {
+                            $this->updateSuccessTransaction(
+                                $transaction,
+                                $donation,
+                                $campaign,
+                                $midtransTransactionId,
+                                $paymentType,
+                                $paymentProvider,
+                                $vaNumber,
+                                $transactionTime
+                            );
+                        } else {
+                            $donation->update(['status' => 'denied']);
+                            $transaction->update([
+                                'midtrans_transaction_id' => $midtransTransactionId,
+                                'payment_method' => $paymentType,
+                                'payment_provider' => $paymentProvider,
+                            ]);
+                        }
+                    }
+                    break;
+
+                case 'settlement':
+                    $this->updateSuccessTransaction(
+                        $transaction,
+                        $donation,
+                        $campaign,
+                        $midtransTransactionId,
+                        $paymentType,
+                        $paymentProvider,
+                        $vaNumber,
+                        $transactionTime
+                    );
+                    break;
+
+                case 'pending':
+                    $this->updatePendingTransaction(
+                        $transaction,
+                        $donation,
+                        $midtransTransactionId,
+                        $paymentType,
+                        $paymentProvider,
+                        $vaNumber
+                    );
+                    break;
+
+                case 'deny':
+                case 'cancel':
+                    $donation->update(['status' => 'denied']);
+                    $transaction->update([
+                        'midtrans_transaction_id' => $midtransTransactionId,
+                        'payment_method' => $paymentType,
+                        'payment_provider' => $paymentProvider,
+                    ]);
+                    break;
+
+                case 'expire':
+                    $donation->update(['status' => 'expired']);
+                    $transaction->update([
+                        'midtrans_transaction_id' => $midtransTransactionId,
+                        'payment_method' => $paymentType,
+                        'payment_provider' => $paymentProvider,
+                    ]);
+                    break;
+
+                default:
+                    Log::warning('Unknown transaction status: ' . $transactionStatus);
+                    break;
             }
 
             DB::commit();
@@ -214,13 +290,17 @@ class TransactionController extends Controller
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
+
+            Log::error('Callback Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage(),
             ], 500);
         }
     }
-
     private function updateSuccessTransaction($transaction, $donation, $campaign, $midtransTransactionId, $paymentMethod, $paymentProvider, $vaNumber, $transactionTime)
     {
         $transaction->update([
@@ -289,7 +369,7 @@ class TransactionController extends Controller
         ], 200);
     }
 
-    public function  checkStatus(string $transactionId)
+    public function checkStatus(string $transactionId)
     {
         try {
             $transaction = Transaction::find($transactionId);
